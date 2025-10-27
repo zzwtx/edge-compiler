@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC  -std=c++11 -shared -Wl,-soname,libcnpy.so -o libcnpy.so CMakeFiles/cnpy.dir/cnpy.cpp.o   -L/usr/local/TensorRT-10.13.3.9/lib  -L/usr/local/cuda-12.4/lib64  -Wl,-rpath,/usr/local/TensorRT-10.13.3.9/lib:/usr/local/cuda-12.4/lib64: -lz 

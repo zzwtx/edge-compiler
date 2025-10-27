@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/read_npy.dir/cpp_read_npy_cnpy.cpp.o -o read_npy   -L/usr/local/TensorRT-10.13.3.9/lib  -L/usr/local/cuda-12.4/lib64  -Wl,-rpath,/usr/local/TensorRT-10.13.3.9/lib:/usr/local/cuda-12.4/lib64:/home/zzwtx/fl/edge/build/cnpy cnpy/libcnpy.so /usr/lib/x86_64-linux-gnu/libz.so 

@@ -1,0 +1,17 @@
+/home/zzwtx/fl/edge/build/CMakeFiles/tensorrt_runner.dir
+/home/zzwtx/fl/edge/build/CMakeFiles/read_npy.dir
+/home/zzwtx/fl/edge/build/CMakeFiles/edit_cache.dir
+/home/zzwtx/fl/edge/build/CMakeFiles/rebuild_cache.dir
+/home/zzwtx/fl/edge/build/CMakeFiles/list_install_components.dir
+/home/zzwtx/fl/edge/build/CMakeFiles/install.dir
+/home/zzwtx/fl/edge/build/CMakeFiles/install/local.dir
+/home/zzwtx/fl/edge/build/CMakeFiles/install/strip.dir
+/home/zzwtx/fl/edge/build/cnpy/CMakeFiles/cnpy.dir
+/home/zzwtx/fl/edge/build/cnpy/CMakeFiles/cnpy-static.dir
+/home/zzwtx/fl/edge/build/cnpy/CMakeFiles/example1.dir
+/home/zzwtx/fl/edge/build/cnpy/CMakeFiles/edit_cache.dir
+/home/zzwtx/fl/edge/build/cnpy/CMakeFiles/rebuild_cache.dir
+/home/zzwtx/fl/edge/build/cnpy/CMakeFiles/list_install_components.dir
+/home/zzwtx/fl/edge/build/cnpy/CMakeFiles/install.dir
+/home/zzwtx/fl/edge/build/cnpy/CMakeFiles/install/local.dir
+/home/zzwtx/fl/edge/build/cnpy/CMakeFiles/install/strip.dir
