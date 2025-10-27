@@ -6,6 +6,8 @@ import os
 from datasets import load_dataset
 from itertools import islice
 from transformers import AutoImageProcessor
+import torch
+from transformers import AutoModelForImageClassification
 
 # --- 配置参数 ---
 ONNX_MODEL_PATH = "mobilenetv2.onnx"
@@ -42,34 +44,92 @@ def profile_onnx():
     
     print(f"Model Input: name='{input_name}', shape={input_shape}")
 
-    # 创建一个符合模型输入的随机虚拟数据
-    # dummy_input = np.random.randn(*input_shape).astype(np.float32)
+    # --- 1a. 加载模型 ---
+    print("--- Model Loading ---")
+    # 加载 ONNX 模型
     
-    # 加载 ImageNet-1k 验证集的前100张图片
-    ds = load_dataset("ILSVRC/imagenet-1k", split="validation", streaming=True)
+    # 加载原始 PyTorch 模型用于对比
+    print("Loading PyTorch model for verification...")
+    pytorch_model = AutoModelForImageClassification.from_pretrained("/home/zzwtx/fl/edge/model_files")
+    pytorch_model.eval()
+    # 如果有可用的GPU，将PyTorch模型也移到GPU上
+    if torch.cuda.is_available():
+        pytorch_model.to("cuda")
+    
+    # --- 1b. 加载数据并预处理 ---
+    print("\nLoading and preprocessing 100 images from ImageNet-1k...")
+    # 使用 streaming=True 避免下载整个数据集
+    dataset = load_dataset("ILSVRC/imagenet-1k", split="validation", streaming=True)
+    
     images = []
     labels = []
-    for sample in islice(ds, 100):
-        img = sample["image"]
-        img = img.convert("RGB")  # 强制转换为三通道彩色图像
-        images.append(img)
+    # 使用 islice 高效地只获取前100个样本
+    for sample in islice(dataset, 100):
+        # 确保所有图片都是三通道的 RGB 格式
+        images.append(sample["image"].convert("RGB"))
         labels.append(sample["label"])
 
-    print(f"已加载图片数量: {len(images)}")
-    
-    processor = AutoImageProcessor.from_pretrained("google/mobilenet_v2_1.0_224")  # 或您的本地模型目录
-    # 批量处理图片
-    inputs = processor(images=images, return_tensors="np")  # 返回 numpy 数组
-    dummy_input = inputs["pixel_values"]  # 形状: [batch, 3, 224, 224]，float32
+    print(f"Loaded {len(images)} images and labels.")
 
-    # --- 2. 热身运行 ---
+    # 加载与模型匹配的预处理器
+    # 我们从本地加载，确保与转换模型时使用的预处理器完全一致
+    processor = AutoImageProcessor.from_pretrained("/home/zzwtx/fl/edge/model_files")
+    
+    # 批量预处理所有图片，返回 NumPy 数组
+    pixel_values = processor(images=images, return_tensors="np")["pixel_values"]
+    print(f"Images preprocessed into tensor with shape: {pixel_values.shape}")
+
+    # --- 2. 正确率/一致性评测 (Accuracy/Consistency Profiling) ---
+    print("\n--- Model Consistency Calculation ---")
+    consistent_predictions = 0
+    right_predictions = 0
+    for i in range(len(images)):
+        # 每次只取一张图片进行推理，注意保持 batch 维度
+        # pixel_values[i:i+1] 的 shape 是 (1, 3, 224, 224)
+        input_tensor = pixel_values[i:i+1]
+        
+        # 运行推理
+        outputs = session.run(None, {input_name: input_tensor})
+        logits = outputs[0]
+        
+        # 获取预测结果
+        onnx_predicted_label = np.argmax(logits, axis=1)[0]
+        
+        # PyTorch 推理
+        with torch.no_grad():
+            # 将numpy数组转为torch tensor，并移到GPU
+            torch_input = torch.from_numpy(input_tensor)
+            if torch.cuda.is_available():
+                torch_input = torch_input.to("cuda")
+            
+            pytorch_outputs = pytorch_model(torch_input)
+            pytorch_predicted_label = torch.argmax(pytorch_outputs.logits, dim=1).item()
+
+        # 比较两个模型的预测结果
+        # print(onnx_predicted_label, pytorch_predicted_label, labels[i])
+        if onnx_predicted_label == pytorch_predicted_label:
+            consistent_predictions += 1
+        if onnx_predicted_label == labels[i] + 1:
+            right_predictions += 1
+            
+    consistency_rate = (consistent_predictions / len(images)) * 100
+    print(f"Consistent Predictions: {consistent_predictions} / {len(images)}")
+    print(f"Model Consistency Rate: {consistency_rate:.2f}%")
+    accuracy_rate = (right_predictions / len(images)) * 100
+    print(f"Correct Predictions: {right_predictions} / {len(images)}")
+    print(f"Model Accuracy Rate: {accuracy_rate:.2f}%")
+
+    # --- 3. 性能评测 (Performance Profiling) ---
+    # 创建一个符合模型输入的随机虚拟数据用于性能测试
+    dummy_input = np.random.randn(*input_shape).astype(np.float32)
+
+    # 热身运行
     print(f"\nPerforming {WARMUP_RUNS} warm-up runs...")
     for _ in range(WARMUP_RUNS):
-        for i in range(len(dummy_input)):
-            session.run(None, {input_name: dummy_input[i:i+1]})  # 只输入一张图片
+        session.run(None, {input_name: dummy_input})
     print("Warm-up complete.")
 
-    # --- 3. 性能评测 ---
+    # 计时运行
     print(f"Performing {PROFILE_RUNS} timed runs...")
     latencies = []
     
@@ -82,8 +142,7 @@ def profile_onnx():
         max_cpu_usage = max(max_cpu_usage, process.cpu_percent())
         max_ram_usage = max(max_ram_usage, process.memory_info().rss)
         start_time = time.perf_counter()
-        for i in range(len(dummy_input)):
-            session.run(None, {input_name: dummy_input[i:i+1]})
+        session.run(None, {input_name: dummy_input})
         end_time = time.perf_counter()
         latencies.append((end_time - start_time) * 1000)
 
@@ -122,5 +181,21 @@ def profile_onnx():
     print(f"RAM Usage (max): {max_ram_usage / (1024**2):.2f} MB")
 
 
+def safe_exit(code=0):
+    """安全退出函数，避免在Linux上因清理冲突而崩溃"""
+    try:
+        # 尝试进行一些清理操作
+        print("Performing safe exit...")
+        # 例如，关闭打开的文件、释放资源等
+    except Exception as e:
+        print(f"Error during safe exit: {e}")
+    finally:
+        os._exit(code)  # 强制退出
+
+
 if __name__ == "__main__":
-    profile_onnx()
+    try:
+        profile_onnx()
+    finally:
+        print("\nProfiling finished. Exiting safely.")
+        safe_exit(0)
