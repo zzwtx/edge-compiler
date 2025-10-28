@@ -57,7 +57,17 @@ target_link_libraries(tensorrt_runner
 # 确保 cnpy 在 tensorrt_runner 之前构建
 add_dependencies(tensorrt_runner cnpy)
 
-# 2. CNPY Reader Example (如果需要)
+# 2. TensorRT Profiling Runner (用于性能分析)
+add_executable(tensorrt_profiling TensorRT_profiling.cpp)
+target_include_directories(tensorrt_profiling PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cnpy)
+target_link_libraries(tensorrt_profiling
+    PRIVATE
+    ${TENSORRT_LIBRARIES}
+    ${CUDA_LIBRARIES}
+    cudart
+)
+
+# 3. CNPY Reader Example (如果需要)
 add_executable(read_npy cpp_read_npy_cnpy.cpp)
 target_link_libraries(read_npy
     PRIVATE
@@ -67,7 +77,7 @@ target_link_libraries(read_npy
 add_dependencies(read_npy cnpy)
 
 message(STATUS "Project configuration complete. You can now build with 'make'.")
-message(STATUS "Targets are: tensorrt_runner, read_npy")
-    
-# 显式地为 tensorrt_runner 添加 cnpy 的头文件目录
+message(STATUS "Targets are: tensorrt_runner, tensorrt_profiling, read_npy")
+
+# 显式地为 read_npy 添加 cnpy 的头文件目录
 target_include_directories(read_npy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cnpy)
