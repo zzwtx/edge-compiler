@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
+#include <map>
 #include "NvInfer.h"
 #include "cuda_runtime.h"
 
@@ -30,82 +31,116 @@ public:
 class ProfilerCallback : public IProfiler {
 public:
     struct LayerProfile {
-        float time_ms;
+        float total_time_ms;
         std::string layer_name;
         std::string layer_type;
         int execution_count;
     };
 
+    // 标志：是否在收集 profiling 数据（非预热）
+    bool is_profiling = false;
+    
+    // 使用 map 来累加同一层的时间
+    std::map<std::string, LayerProfile> layer_stats;
+
     // IProfiler::reportLayerTime provides only layer name and time (signature varies by TRT version).
     // Match the common signature: (const char* layerName, float ms)
     void reportLayerTime(const char* layerName, float ms) noexcept override {
-        LayerProfile profile;
-        profile.layer_name = layerName ? layerName : "";
-        profile.time_ms = ms;
-        profile.execution_count = 1;
-        profile.layer_type = "Unknown"; // LayerType is not provided in this callback signature
+        // 只在 profiling 阶段统计（跳过预热）
+        if (!is_profiling) {
+            return;
+        }
+
+        std::string name_str = layerName ? layerName : "";
         
-        profiles.push_back(profile);
+        // 查找或创建该层的统计数据
+        auto it = layer_stats.find(name_str);
+        if (it != layer_stats.end()) {
+            // 该层已存在，累加时间
+            it->second.total_time_ms += ms;
+            it->second.execution_count++;
+        } else {
+            // 首次出现该层
+            LayerProfile profile;
+            profile.layer_name = name_str;
+            profile.total_time_ms = ms;
+            profile.execution_count = 1;
+            profile.layer_type = "Unknown";
+            layer_stats[name_str] = profile;
+        }
     }
 
     void printLayerProfile() const {
         std::cout << "\n" << std::string(80, '=') << std::endl;
         std::cout << "              TensorRT Layer Profiling Results" << std::endl;
         std::cout << std::string(80, '=') << std::endl;
+        std::cout << "Note: Times are AVERAGED over " << (layer_stats.empty() ? 0 : layer_stats.begin()->second.execution_count) 
+                  << " iterations (excluding warm-up)\n" << std::endl;
         
         // 计算总时间
         float total_time = 0.0f;
-        for (const auto& p : profiles) {
-            total_time += p.time_ms;
+        for (const auto& pair : layer_stats) {
+            total_time += pair.second.total_time_ms;
         }
         
-        // 按时间排序
-        std::vector<LayerProfile> sorted_profiles = profiles;
+        // 转换为 vector 并按时间排序
+        std::vector<std::pair<std::string, LayerProfile>> sorted_profiles;
+        for (const auto& pair : layer_stats) {
+            sorted_profiles.push_back(pair);
+        }
         std::sort(sorted_profiles.begin(), sorted_profiles.end(),
-                  [](const LayerProfile& a, const LayerProfile& b) {
-                      return a.time_ms > b.time_ms;
+                  [](const auto& a, const auto& b) {
+                      return a.second.total_time_ms > b.second.total_time_ms;
                   });
         
         // 打印表头
         std::cout << std::left 
                   << std::setw(40) << "Layer Name"
                   << std::setw(20) << "Type"
-                  << std::setw(15) << "Time (ms)"
+                  << std::setw(15) << "Avg Time (ms)"
                   << std::setw(10) << "% of Total"
+                  << std::setw(12) << "Exec Count"
                   << std::endl;
-        std::cout << std::string(80, '-') << std::endl;
+        std::cout << std::string(97, '-') << std::endl;
         
-        // 打印每层数据
-        for (size_t i = 0; i < sorted_profiles.size(); ++i) {
-            const auto& p = sorted_profiles[i];
-            float percentage = (total_time > 0) ? (p.time_ms / total_time * 100.0f) : 0.0f;
+        // 打印每层数据（平均时间）
+        for (const auto& pair : sorted_profiles) {
+            const auto& p = pair.second;
+            float avg_time = p.total_time_ms / p.execution_count;
+            float percentage = (total_time > 0) ? (p.total_time_ms / total_time * 100.0f) : 0.0f;
             
             std::cout << std::left 
                       << std::setw(40) << p.layer_name
                       << std::setw(20) << p.layer_type
-                      << std::setw(15) << std::fixed << std::setprecision(4) << p.time_ms
+                      << std::setw(15) << std::fixed << std::setprecision(4) << avg_time
                       << std::setw(10) << std::fixed << std::setprecision(2) << percentage << "%"
+                      << std::setw(12) << p.execution_count
                       << std::endl;
         }
         
-        std::cout << std::string(80, '-') << std::endl;
-        std::cout << "Total GPU Execution Time: " << std::fixed << std::setprecision(4) 
+        std::cout << std::string(97, '-') << std::endl;
+        
+        int num_iterations = sorted_profiles.empty() ? 0 : sorted_profiles[0].second.execution_count;
+        float avg_total_time = (num_iterations > 0) ? (total_time / num_iterations) : 0.0f;
+        
+        std::cout << "Total GPU Execution Time (accumulated): " << std::fixed << std::setprecision(4) 
                   << total_time << " ms" << std::endl;
+        std::cout << "Average per iteration: " << std::fixed << std::setprecision(4) 
+                  << avg_total_time << " ms (" << num_iterations << " iterations profiled)" << std::endl;
         std::cout << std::string(80, '=') << std::endl;
         
         // 找出消耗时间最多的前 5 层
-        std::cout << "\n🔥 Top 5 Time-Consuming Layers (Optimization Candidates):" << std::endl;
+        std::cout << "\n🔥 Top 5 Time-Consuming Layers (Averaged, Optimization Candidates):" << std::endl;
         for (size_t i = 0; i < std::min(size_t(5), sorted_profiles.size()); ++i) {
-            const auto& p = sorted_profiles[i];
-            float percentage = (total_time > 0) ? (p.time_ms / total_time * 100.0f) : 0.0f;
+            const auto& p = sorted_profiles[i].second;
+            float avg_time = p.total_time_ms / p.execution_count;
+            float percentage = (total_time > 0) ? (p.total_time_ms / total_time * 100.0f) : 0.0f;
             std::cout << "  " << (i+1) << ". [" << std::fixed << std::setprecision(2) 
                       << percentage << "%] " << p.layer_name 
                       << " (" << p.layer_type << ") - " 
-                      << std::fixed << std::setprecision(4) << p.time_ms << " ms" << std::endl;
+                      << std::fixed << std::setprecision(4) << avg_time << " ms/iter" << std::endl;
         }
     }
-
-    std::vector<LayerProfile> profiles;
 };
 
 // ===================================
@@ -202,9 +237,9 @@ int main(int argc, char** argv) {
     // 6. 热身运行（消除冷启动效应）
     cudaStream_t stream;
     cudaStreamCreate(&stream);
-    
-    std::cout << "Performing warm-up runs (10 iterations)..." << std::endl;
-    for (int i = 0; i < 10; ++i) {
+
+    std::cout << "Performing warm-up runs (50 iterations)..." << std::endl;
+    for (int i = 0; i < 50; ++i) {
         memcpy(hostBuffers[inputBindingIndex], dummy_input.data(), single_input_bytes);
         cudaMemcpyAsync(deviceBindings[inputBindingIndex], hostBuffers[inputBindingIndex], 
                        single_input_bytes, cudaMemcpyHostToDevice, stream);
@@ -223,10 +258,11 @@ int main(int argc, char** argv) {
     std::cout << "Warm-up complete." << std::endl;
 
     // 7. 性能分析运行（启用 Profiler）
-    std::cout << "\nPerforming profiling runs (10 iterations with layer-level profiling)..." << std::endl;
-    for (int i = 0; i < 10; ++i) {
+    std::cout << "\nPerforming profiling runs (100 iterations with layer-level profiling)..." << std::endl;
+    profiler.is_profiling = true;  // ◄ 启用 profiling（跳过预热数据）
+    for (int i = 0; i < 100; ++i) {
         memcpy(hostBuffers[inputBindingIndex], dummy_input.data(), single_input_bytes);
-        cudaMemcpyAsync(deviceBindings[inputBindingIndex], hostBuffers[inputBindingIndex],
+        cudaMemcpyAsync(deviceBindings[inputBindingIndex], hostBuffers[inputBindingIndex], 
                        single_input_bytes, cudaMemcpyHostToDevice, stream);
         
         const char* inputTensorName = engine->getIOTensorName(inputBindingIndex);

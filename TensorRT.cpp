@@ -15,6 +15,7 @@
 #include <stdexcept>
 #include <fstream>
 #include <random>
+#include <nvml.h>           // NVIDIA 管理库，用于 GPU 显存监控
 #include <chrono>
 #include <algorithm>
 #include <cmath>
@@ -86,6 +87,9 @@ int main(int argc, char** argv) {
     std::vector<void*> hostBuffers(nbBindings, nullptr);
     std::vector<int> bindingIsInput(nbBindings, 0);
 
+    // 直接追踪你的 cudaMalloc 和 cudaFree 调用
+    size_t totalGpuMemory = 0;
+    size_t maxGpuMemory = 0;
     // 对每个 binding（输入或输出）计算缓冲大小，并分配主机与设备内存。
     for (int b = 0; b < nbBindings; ++b) {
     // 通过 tensor 的维度与数据类型可计算所需元素数量与字节数
@@ -110,8 +114,17 @@ int main(int argc, char** argv) {
         cudaMallocHost(&hostBuffers[b], bytes);
     // 为该 binding 分配设备内存
         cudaMalloc(&deviceBindings[b], bytes);
+
+        totalGpuMemory += bytes;
+        maxGpuMemory = std::max(maxGpuMemory, totalGpuMemory);
         std::cout << "Binding " << b << " - " << (isInput ? "Input" : "Output") << ", bytes=" << bytes << "\n";
     }
+
+    // 最后打印
+    std::cout << "Max GPU Memory Used: " << maxGpuMemory / (1024.0 * 1024.0) << " MB" << std::endl;
+    // 检查引擎需要的工作空间大小
+    size_t workspaceSize = engine->getDeviceMemorySizeV2();
+    std::cout << "Engine workspace size: " << workspaceSize / (1024.0 * 1024.0) << " MB" << std::endl;
 
     // -----------------------
     // 3) 加载真实数据
@@ -147,6 +160,7 @@ int main(int argc, char** argv) {
     float* all_images_data = images_arr.data<float>();
     int correct_predictions = 0;
     size_t num_images = labels_arr.num_vals;
+    // num_images = 0;
 
     // 确定输入和输出 binding 的索引
     int inputBindingIndex = -1;
@@ -193,6 +207,7 @@ int main(int argc, char** argv) {
         context->setOutputTensorAddress(outputTensorName, deviceBindings[outputBindingIndex]);
 
         // e. 异步执行推理
+        context->setInputShape("input", Dims4{1, 3, 224, 224});
         context->enqueueV3(stream);
 
         // f. 将设备输出拷回主机
@@ -270,6 +285,7 @@ int main(int argc, char** argv) {
         auto start_time = std::chrono::high_resolution_clock::now();
         
         // d. 异步执行推理
+        context->setInputShape("input", Dims4{1, 3, 224, 224});
         context->enqueueV3(stream);
 
         // e. 将设备输出拷回主机

@@ -8,11 +8,100 @@ from itertools import islice
 from transformers import AutoImageProcessor
 import torch
 from transformers import AutoModelForImageClassification
+import threading
+import time
+from typing import Optional, Tuple
+
+# --- 新增: GPU 显存监控 ---
+try:
+    import pynvml
+    pynvml.nvmlInit()
+    PYNVML_AVAILABLE = True
+except Exception as e:
+    print(f"Warning: pynvml not available ({e}). GPU monitoring disabled.")
+    PYNVML_AVAILABLE = False
 
 # --- 配置参数 ---
 ONNX_MODEL_PATH = "mobilenetv2.onnx"
 WARMUP_RUNS = 50  # 热身运行次数，确保 GPU 达到稳定状态
 PROFILE_RUNS = 100  # 实际用于计时的推理次数
+
+def get_gpu_memory_usage():
+    """
+    获取 GPU 显存使用情况（单位: MB）
+    返回: (已用显存 MB, 总显存 MB, 使用率%)
+    如果 pynvml 不可用，返回 None
+    """
+    if not PYNVML_AVAILABLE:
+        return None
+    
+    try:
+        # 假设使用第一块 GPU (GPU 0)
+        gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        mem_info = pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
+        
+        used_mb = mem_info.used / (1024 ** 2)
+        total_mb = mem_info.total / (1024 ** 2)
+        usage_percent = (mem_info.used / mem_info.total) * 100
+        
+        return used_mb, total_mb, usage_percent
+    except Exception as e:
+        print(f"Error getting GPU memory: {e}")
+        return None
+
+
+class GPUMemorySamplerThread:
+    """在独立线程中持续采样 GPU 显存，以捕捉峰值"""
+    
+    def __init__(self, sample_interval_ms: float = 1.0):
+        """
+        Args:
+            sample_interval_ms: 采样间隔（毫秒），越小越精确但开销越大
+        """
+        self.sample_interval = sample_interval_ms / 1000.0
+        self.should_stop = False
+        self.max_gpu_memory = 0
+        self.baseline_memory = 0
+        self.thread: Optional[threading.Thread] = None
+        
+    def start(self):
+        """启动采样线程"""
+        # 记录基线
+        gpu_mem = get_gpu_memory_usage()
+        if gpu_mem is not None:
+            self.baseline_memory = gpu_mem[0]  # 取已用显存
+            print(f"GPU Memory Baseline: {self.baseline_memory:.2f} MB")
+        
+        self.should_stop = False
+        self.max_gpu_memory = 0
+        
+        # 启动采样线程
+        self.thread = threading.Thread(target=self._sampling_loop, daemon=True)
+        self.thread.start()
+    
+    def stop(self):
+        """停止采样线程并等待其完成"""
+        self.should_stop = True
+        if self.thread is not None:
+            self.thread.join(timeout=5.0)
+    
+    def _sampling_loop(self):
+        """采样循环（运行在独立线程中）"""
+        while not self.should_stop:
+            gpu_mem = get_gpu_memory_usage()
+            if gpu_mem is not None:
+                used_mb = gpu_mem[0]
+                # print(f"GPU Memory Usage: {used_mb:.2f} MB")
+                # 计算相对于基线的增量
+                increment = max(0, used_mb - self.baseline_memory)
+                self.max_gpu_memory = max(self.max_gpu_memory, increment)
+            
+            time.sleep(self.sample_interval)
+    
+    def get_peak_memory_mb(self) -> float:
+        """获取峰值显存占用（相对于基线的增量，单位 MB）"""
+        return self.max_gpu_memory
+    
 
 def profile_onnx():
     """
@@ -84,6 +173,7 @@ def profile_onnx():
     consistent_predictions = 0
     right_predictions = 0
     for i in range(len(images)):
+    # for i in range(0):
         # 每次只取一张图片进行推理，注意保持 batch 维度
         # pixel_values[i:i+1] 的 shape 是 (1, 3, 224, 224)
         input_tensor = pixel_values[i:i+1]
@@ -122,6 +212,10 @@ def profile_onnx():
     # --- 3. 性能评测 (Performance Profiling) ---
     # 创建一个符合模型输入的随机虚拟数据用于性能测试
     dummy_input = np.random.randn(*input_shape).astype(np.float32)
+    
+    # ✅ 创建 GPU 显存采样线程
+    gpu_sampler = GPUMemorySamplerThread(sample_interval_ms=1.0)  # 每 1ms 采样一次
+    gpu_sampler.start()  # 启动采样线程
 
     # 热身运行
     print(f"\nPerforming {WARMUP_RUNS} warm-up runs...")
@@ -137,14 +231,32 @@ def profile_onnx():
     process = psutil.Process(os.getpid())
     max_cpu_usage = 0
     max_ram_usage = 0
+    
+    # pynvml.nvmlInit()
+    # handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+    # # 记录加载模型前的基线显存
+    # mem_info_before = pynvml.nvmlDeviceGetMemoryInfo(handle)
+    # baseline_used_mb = mem_info_before.used / (1024**2)
+    # print(f"Baseline Memory: {baseline_used_mb:.2f} MB")
+    # max_gpu_memory = 0  # 新增: 最大 GPU 显存
 
     for _ in range(PROFILE_RUNS):
         max_cpu_usage = max(max_cpu_usage, process.cpu_percent())
         max_ram_usage = max(max_ram_usage, process.memory_info().rss)
+        
+        # 新增: 监控 GPU 显存
+        # gpu_mem = get_gpu_memory_usage()
+        # if gpu_mem is not None:
+        #     used_mb, total_mb, usage_percent = gpu_mem
+        #     max_gpu_memory = max(max_gpu_memory, used_mb)
+        
         start_time = time.perf_counter()
         session.run(None, {input_name: dummy_input})
         end_time = time.perf_counter()
         latencies.append((end_time - start_time) * 1000)
+        
+    # ✅ 停止采样线程
+    gpu_sampler.stop()
 
     print("Profiling complete.")
 
@@ -179,6 +291,36 @@ def profile_onnx():
     print("\n--- Resource Usage (during profiling) ---")
     print(f"CPU Usage (max): {max_cpu_usage:.1f}%")
     print(f"RAM Usage (max): {max_ram_usage / (1024**2):.2f} MB")
+    
+    if PYNVML_AVAILABLE:
+        peak_gpu_memory = gpu_sampler.get_peak_memory_mb()
+        print(f"GPU Memory (peak increment): {peak_gpu_memory:.2f} MB")
+        
+        # 获取当前 GPU 总显存
+        try:
+            gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            mem_info = pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
+            total_gpu_mem = mem_info.total / (1024 ** 2)
+            print(f"GPU Memory (total): {total_gpu_mem:.2f} MB")
+        except:
+            pass
+    else:
+        print("GPU Memory: N/A (pynvml not available)")
+
+    # 新增: 显示 GPU 显存使用情况
+    # if PYNVML_AVAILABLE:
+    #     print(f"GPU Memory (max): {max_gpu_memory - baseline_used_mb:.2f} MB")
+        
+    #     # 获取当前 GPU 总显存
+    #     try:
+    #         gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+    #         mem_info = pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
+    #         total_gpu_mem = mem_info.total / (1024 ** 2)
+    #         print(f"GPU Memory (total): {total_gpu_mem:.2f} MB")
+    #     except:
+    #         pass
+    # else:
+    #     print("GPU Memory: N/A (pynvml not available)")
 
 
 def safe_exit(code=0):
@@ -187,6 +329,8 @@ def safe_exit(code=0):
         # 尝试进行一些清理操作
         print("Performing safe exit...")
         # 例如，关闭打开的文件、释放资源等
+        if PYNVML_AVAILABLE:
+            pynvml.nvmlShutdown()
     except Exception as e:
         print(f"Error during safe exit: {e}")
     finally:

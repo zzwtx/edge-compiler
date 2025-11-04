@@ -1,4 +1,37 @@
+# 忽略所有文件和文件夹
+*
+*/
+
+# 显式包含要上传的文件类型
+!.gitignore
+!.vscode/
+!.vscode/**
+!*.py
+!*.cpp
+!*.md
+!*.txt
+!*.sh
+!CMakeLists.txt
+
+# 显式包含所有目录（使得文件能被找到）
+!*/
+
+# 忽略特定的不需要上传的内容（在目录内）
 *.deb
 *.so
 *.a
 *.tar.gz
+*.engine
+*.cache
+*.json
+*.npz
+*.onnx
+*.onnx.data
+build/
+.venv/
+__pycache__/
+cutlass/
+cnpy/
+apache-tvm-src-v0.22.0/
+.pkl_memoize_py3/
+model_files/

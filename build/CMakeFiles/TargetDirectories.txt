@@ -1,4 +1,5 @@
 /home/zzwtx/fl/edge/build/CMakeFiles/tensorrt_runner.dir
+/home/zzwtx/fl/edge/build/CMakeFiles/tensorrt_profiling.dir
 /home/zzwtx/fl/edge/build/CMakeFiles/read_npy.dir
 /home/zzwtx/fl/edge/build/CMakeFiles/edit_cache.dir
 /home/zzwtx/fl/edge/build/CMakeFiles/rebuild_cache.dir

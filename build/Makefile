@@ -175,6 +175,19 @@ tensorrt_runner/fast:
 .PHONY : tensorrt_runner/fast
 
 #=============================================================================
+# Target rules for targets named tensorrt_profiling
+
+# Build rule for target.
+tensorrt_profiling: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 tensorrt_profiling
+.PHONY : tensorrt_profiling
+
+# fast build rule for target.
+tensorrt_profiling/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensorrt_profiling.dir/build.make CMakeFiles/tensorrt_profiling.dir/build
+.PHONY : tensorrt_profiling/fast
+
+#=============================================================================
 # Target rules for targets named read_npy
 
 # Build rule for target.
@@ -250,6 +263,30 @@ TensorRT.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensorrt_runner.dir/build.make CMakeFiles/tensorrt_runner.dir/TensorRT.cpp.s
 .PHONY : TensorRT.cpp.s
 
+TensorRT_profiling.o: TensorRT_profiling.cpp.o
+.PHONY : TensorRT_profiling.o
+
+# target to build an object file
+TensorRT_profiling.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensorrt_profiling.dir/build.make CMakeFiles/tensorrt_profiling.dir/TensorRT_profiling.cpp.o
+.PHONY : TensorRT_profiling.cpp.o
+
+TensorRT_profiling.i: TensorRT_profiling.cpp.i
+.PHONY : TensorRT_profiling.i
+
+# target to preprocess a source file
+TensorRT_profiling.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensorrt_profiling.dir/build.make CMakeFiles/tensorrt_profiling.dir/TensorRT_profiling.cpp.i
+.PHONY : TensorRT_profiling.cpp.i
+
+TensorRT_profiling.s: TensorRT_profiling.cpp.s
+.PHONY : TensorRT_profiling.s
+
+# target to generate assembly for a file
+TensorRT_profiling.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensorrt_profiling.dir/build.make CMakeFiles/tensorrt_profiling.dir/TensorRT_profiling.cpp.s
+.PHONY : TensorRT_profiling.cpp.s
+
 cpp_read_npy_cnpy.o: cpp_read_npy_cnpy.cpp.o
 .PHONY : cpp_read_npy_cnpy.o
 
@@ -290,10 +327,14 @@ help:
 	@echo "... cnpy-static"
 	@echo "... example1"
 	@echo "... read_npy"
+	@echo "... tensorrt_profiling"
 	@echo "... tensorrt_runner"
 	@echo "... TensorRT.o"
 	@echo "... TensorRT.i"
 	@echo "... TensorRT.s"
+	@echo "... TensorRT_profiling.o"
+	@echo "... TensorRT_profiling.i"
+	@echo "... TensorRT_profiling.s"
 	@echo "... cpp_read_npy_cnpy.o"
 	@echo "... cpp_read_npy_cnpy.i"
 	@echo "... cpp_read_npy_cnpy.s"

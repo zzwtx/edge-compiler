@@ -64,6 +64,7 @@ CMAKE_BINARY_DIR = /home/zzwtx/fl/edge/build
 
 # The main recursive "all" target.
 all: CMakeFiles/tensorrt_runner.dir/all
+all: CMakeFiles/tensorrt_profiling.dir/all
 all: CMakeFiles/read_npy.dir/all
 all: cnpy/all
 .PHONY : all
@@ -74,6 +75,7 @@ preinstall: cnpy/preinstall
 
 # The main recursive "clean" target.
 clean: CMakeFiles/tensorrt_runner.dir/clean
+clean: CMakeFiles/tensorrt_profiling.dir/clean
 clean: CMakeFiles/read_npy.dir/clean
 clean: cnpy/clean
 .PHONY : clean
@@ -104,7 +106,7 @@ cnpy/clean: cnpy/CMakeFiles/example1.dir/clean
 CMakeFiles/tensorrt_runner.dir/all: cnpy/CMakeFiles/cnpy.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensorrt_runner.dir/build.make CMakeFiles/tensorrt_runner.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensorrt_runner.dir/build.make CMakeFiles/tensorrt_runner.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/zzwtx/fl/edge/build/CMakeFiles --progress-num=9,10 "Built target tensorrt_runner"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/zzwtx/fl/edge/build/CMakeFiles --progress-num=11,12 "Built target tensorrt_runner"
 .PHONY : CMakeFiles/tensorrt_runner.dir/all
 
 # Build rule for subdir invocation for target.
@@ -122,6 +124,32 @@ tensorrt_runner: CMakeFiles/tensorrt_runner.dir/rule
 CMakeFiles/tensorrt_runner.dir/clean:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensorrt_runner.dir/build.make CMakeFiles/tensorrt_runner.dir/clean
 .PHONY : CMakeFiles/tensorrt_runner.dir/clean
+
+#=============================================================================
+# Target rules for target CMakeFiles/tensorrt_profiling.dir
+
+# All Build rule for target.
+CMakeFiles/tensorrt_profiling.dir/all:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensorrt_profiling.dir/build.make CMakeFiles/tensorrt_profiling.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensorrt_profiling.dir/build.make CMakeFiles/tensorrt_profiling.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/zzwtx/fl/edge/build/CMakeFiles --progress-num=9,10 "Built target tensorrt_profiling"
+.PHONY : CMakeFiles/tensorrt_profiling.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/tensorrt_profiling.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/zzwtx/fl/edge/build/CMakeFiles 2
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/tensorrt_profiling.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/zzwtx/fl/edge/build/CMakeFiles 0
+.PHONY : CMakeFiles/tensorrt_profiling.dir/rule
+
+# Convenience name for target.
+tensorrt_profiling: CMakeFiles/tensorrt_profiling.dir/rule
+.PHONY : tensorrt_profiling
+
+# clean rule for target.
+CMakeFiles/tensorrt_profiling.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensorrt_profiling.dir/build.make CMakeFiles/tensorrt_profiling.dir/clean
+.PHONY : CMakeFiles/tensorrt_profiling.dir/clean
 
 #=============================================================================
 # Target rules for target CMakeFiles/read_npy.dir
