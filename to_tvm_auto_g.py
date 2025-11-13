@@ -6,10 +6,11 @@ from tvm.relax.frontend import onnx as relax_onnx
 from tvm.relax import transform as relax_transform
 from tvm.tir import transform as tir_transform
 from tvm import dlight as dl
+import tempfile
 
 # 定义 ONNX 模型路径和编译后库的保存路径
 onnx_model_path = "mobilenetv2.onnx"
-lib_path = "mobilenetv2_gpu_fixed.so"
+lib_path = "mobilenetv2_gpu_autotune_g.so"
 
 # 加载 ONNX 模型
 onnx_model = onnx.load(onnx_model_path)
@@ -30,7 +31,8 @@ else:
     params = None
 
 # 定义编译目标
-target = tvm.target.Target("cuda", host="llvm")
+device = tvm.cuda(0)
+target = tvm.target.Target.from_device(device)
 
 # 手动应用优化 Pass
 # 1. 绑定符号变量（如果有参数的话）
@@ -55,15 +57,22 @@ mod = seq(mod)
 print("应用 LegalizeOps Pass...")
 mod = relax_transform.LegalizeOps()(mod)
 
-# 4. 应用 DLight 规则进行底层 TIR 优化
-print("应用 DLight 规则...")
-with target:
-    mod = dl.ApplyDefaultSchedule(  # pylint: disable=not-callable
-        dl.gpu.Matmul(),
-        dl.gpu.GEMV(),
-        dl.gpu.Reduction(),
-        dl.gpu.GeneralReduction(),
-        dl.gpu.Fallback(),
+# 4. 自动调优配置
+print("开始自动调优...")
+trials = 2000
+with target, tempfile.TemporaryDirectory() as tmp_dir:
+    mod = tvm.ir.transform.Sequential(
+        [
+            # relax.get_pipeline("zero"),
+            relax.transform.MetaScheduleTuneTIR(
+                work_dir=tmp_dir, 
+                max_trials_global=trials,
+                # num_trials_per_iter=64,
+                # builder_timeout_sec=60,
+                # runner_timeout_sec=10,
+            ),
+            relax.transform.MetaScheduleApplyDatabase(work_dir=tmp_dir),
+        ]
     )(mod)
 
 print("开始使用 Relax 编译模型...")

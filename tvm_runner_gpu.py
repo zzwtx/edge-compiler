@@ -21,7 +21,7 @@ import json
 # 配置参数
 # ============================================================================
 
-LIB_PATH = "mobilenetv2_gpu.so"
+LIB_PATH = "mobilenetv2_gpu_fixed.so"
 DATA_PATH = "data.npz"
 BATCH_SIZE = 1
 INPUT_NAME = "input"
@@ -401,8 +401,8 @@ def main():
         vm = load_compiled_model(LIB_PATH)
         
         # 运行推理
-        # outputs = run_inference(vm, images)
-        outputs = [[0]*1000]*100  # --- IGNORE ---
+        outputs = run_inference(vm, images)
+        # outputs = [[0]*1000]*100  # --- IGNORE ---
         
         # 分析结果
         print("\n" + "="*60)
@@ -411,7 +411,7 @@ def main():
         results = analyze_results(outputs, labels, np.argmax(outputs, axis=1))
         
         # 性能基准测试（使用150张随机图片，50次预热，100次正式测试）
-        performance = benchmark_inference(vm, images, num_warmup=0, num_runs=1)
+        performance = benchmark_inference(vm, images, num_warmup=50, num_runs=100)
         
         # 打印详细报告
         print_detailed_results(results, performance)

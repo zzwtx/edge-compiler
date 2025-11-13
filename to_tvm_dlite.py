@@ -9,7 +9,7 @@ from tvm import dlight as dl
 
 # 定义 ONNX 模型路径和编译后库的保存路径
 onnx_model_path = "mobilenetv2.onnx"
-lib_path = "mobilenetv2_gpu_fixed.so"
+lib_path = "mobilenetv2_gpu_dlite.so"
 
 # 加载 ONNX 模型
 onnx_model = onnx.load(onnx_model_path)
@@ -39,31 +39,36 @@ if params is not None:
     main_func_name = list(mod.functions.keys())[0]
     mod = relax.transform.BindParams(main_func_name, params)(mod)
 
-# 2. 应用图级优化
-# Fusing ops, constant folding, etc.
-seq = tvm.transform.Sequential(
-    [
-        relax_transform.FoldConstant(),
-        relax_transform.EliminateCommonSubexpr(),
-        relax_transform.CanonicalizeBindings(),
-        relax_transform.FuseOps(),
-    ]
-)
-mod = seq(mod)
+# # 2. 应用图级优化
+# # Fusing ops, constant folding, etc.
+# seq = tvm.transform.Sequential(
+#     [
+#         relax_transform.FoldConstant(),
+#         relax_transform.EliminateCommonSubexpr(),
+#         relax_transform.CanonicalizeBindings(),
+#         relax_transform.FuseOps(),
+#     ]
+# )
+# mod = seq(mod)
 
-# 3. 将高层算子转换为底层 TIR 调用
-print("应用 LegalizeOps Pass...")
-mod = relax_transform.LegalizeOps()(mod)
+# # 3. 将高层算子转换为底层 TIR 调用
+# print("应用 LegalizeOps Pass...")
+# mod = relax_transform.LegalizeOps()(mod)
 
 # 4. 应用 DLight 规则进行底层 TIR 优化
 print("应用 DLight 规则...")
 with target:
-    mod = dl.ApplyDefaultSchedule(  # pylint: disable=not-callable
-        dl.gpu.Matmul(),
-        dl.gpu.GEMV(),
-        dl.gpu.Reduction(),
-        dl.gpu.GeneralReduction(),
-        dl.gpu.Fallback(),
+    mod = tvm.ir.transform.Sequential(
+        [
+            relax.get_pipeline("zero"),
+            dl.ApplyDefaultSchedule(
+                dl.gpu.Matmul(),
+                dl.gpu.GEMV(),
+                dl.gpu.Reduction(),
+                dl.gpu.GeneralReduction(),
+                dl.gpu.Fallback(),
+            ),
+        ]
     )(mod)
 
 print("开始使用 Relax 编译模型...")
